@@ -1,0 +1,57 @@
+version: '3.8'
+
+services:
+  # Relational Database: PostgreSQL
+  db:
+    image: postgres:16-alpine
+    container_name: taskmanager-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: taskmanager
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./server/src/db/schema.sql:/docker-entrypoint-initdb.d/schema.sql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d taskmanager"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  # Backend REST API: Node.js & Express
+  server:
+    build:
+      context: ./server
+      dockerfile: Dockerfile
+    container_name: taskmanager-server
+    restart: unless-stopped
+    ports:
+      - "5000:5000"
+    environment:
+      PORT: 5000
+      NODE_ENV: production
+      DATABASE_URL: postgresql://postgres:postgres@db:5432/taskmanager
+      JWT_SECRET: production_super_secret_jwt_key_2026
+      JWT_EXPIRES_IN: 7d
+    depends_on:
+      db:
+        condition: service_healthy
+
+  # Frontend SPA: React & Vite served via Nginx
+  client:
+    build:
+      context: ./client
+      dockerfile: Dockerfile
+    container_name: taskmanager-client
+    restart: unless-stopped
+    ports:
+      - "3000:80"
+    depends_on:
+      - server
+
+volumes:
+  postgres_data:
+    driver: local
